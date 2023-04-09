@@ -4,13 +4,14 @@ const { defineString } = require('firebase-functions/params');
 const VoiceResponse = require('twilio').twiml.VoiceResponse;
 const { Configuration, OpenAIApi} = require("openai");
 const twilio = require("twilio")
+const dispatcherNumber = defineString("DISPATCHER_NUMBER")
+const twilioNumber = defineString("TWILIO_NUMBER")
 const openai_key = defineString("OPENAI_KEY")
 const accountSid = defineString("TWILIO_ACCOUNT_SID")
 const authToken = defineString("TWILIO_AUTH_TOKEN")
 const { Expo } = require('expo-server-sdk');
 const { validateRequestWithBody } = require("twilio/lib/webhooks/webhooks");
 admin.initializeApp();
-
 
 exports.newUser = functions.auth.user().onCreate((user) => {
   return admin.firestore()
@@ -191,39 +192,76 @@ exports.gather2 = functions.https.onRequest(async(req, res) => {
 })
 
 async function dispatchFirstResponders(snap) {
+  var textMessage = `This is a ProtectEd alert. A shooting is occuring at: ${school_data.name} located at: ${school_data.location}. Please stay tuned for more information`
+  var callMessage = `This is a ProtectEd alert. A shooting is occuring at: ${school_data.name} located at: ${school_data.location}... Organization code: ${school_data.code}. Please call back for additional information.`
+
+  await snap.ref.update({
+    responses: [callMessage],
+  })
+
   const client = twilio(accountSid.value(), authToken.value());
-  const admin_doc_snap = await getAdminDoc(snap.data().code)
-  const school_data = admin_doc_snap.data()
+  const code = snap.data().code;
+  console.log("Code", code)
+  const admin_doc_snap = await getAdminDoc(code);
+  const school_data = admin_doc_snap.data();
+  console.log(school_data);
 
-  console.log(school_data)
+  const usersRef = admin.firestore().collection("users")
+  const snapshot = await usersRef.where("code", "==", code).get();
 
-  const message = `This is a ProtectEd alert. A shooting is occuring at: ${school_data.name} located at: ${school_data.location}... Organization code: ${school_data.code}. Please call back for additional information.`
-  console.log(message)
+  if (snapshot.empty) {
+    console.log("No matching documents.")
+  } else {
+    snapshot.forEach(async doc => {
+      console.log("Found staff document")
+      console.log(doc.id, "=>", doc.data())
+      
+      const students = doc.data().students
+
+      students.forEach(studentNumber => {
+        console.log(studentNumber, "is an admin. Calling.")
+
+        if (doc.data().admin == true) {
+          client.calls
+          .create({
+             twiml: `<Response><Say>${callMessage}</Say></Response>`,
+             to: studentNumber,
+             from: twilioNumber.value()
+           })
+          .then(call => console.log(call.sid));
+        }
+        
+        console.log("Texting", studentNumber)
+        client.messages
+        .create({
+          body: message, 
+          from: twilioNumber.value(), 
+          to: studentNumber
+        })
+        .then(message => console.log(message.sid));
+      })
+    })
+  }
 
   client.calls
       .create({
-         twiml: `<Response><Say>${message}</Say></Response>`,
-         to: '+14083103927',
-         from: '+14083378528'
+         twiml: `<Response><Say>${callMessage}</Say></Response>`,
+         to: dispatcherNumber.value(),
+         from: twilioNumber.value()
        })
       .then(call => console.log(call.sid));
 
-  await snap.ref.update({
-    responses: [message],
-    requiresCalling: false,
-  })
+
 }
 
 
 exports.alertResponders = functions.firestore
   .document("emergencies/{victimId}")
-  .onUpdate(async(snap, context) => {
+  .onCreate(async(snap, context) => {
     console.log("Document updated")
-    const victim_data = snap.after.data();
+    const victim_data = snap.data();
     console.log("REPORTER DATA" + JSON.stringify(victim_data))
-    if (victim_data.requiresCalling) {
-      console.log("Dispatching...")
-      await dispatchFirstResponders(snap.after)
-    }
+    console.log("Dispatching...")
+    await dispatchFirstResponders(snap)
   })
 
