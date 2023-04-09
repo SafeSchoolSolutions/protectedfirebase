@@ -74,17 +74,16 @@ async function getResponse(code) {
   const messages = [
     {"role": "system", "content": `Imagine you are a bystander at a school that you are very knowledgeable about. Here is some information about the school:
     
-    Name: ${school_data.name}
-    Address: ${school_data.location}
-    Student Count: ${school_data.studentCount}
-    Additional Information: ${school_data.additionalInformation}
+    Location: ${school_data.location}
+    Address: ${school_data.address}
+    Student Count: ${school_data.student_Count}
+    Additional Information: ${school_data.extraInfo}
     
     Imagine you witness a shooting taking place and you call 911 to report the emergency.
     
     Here is some information about the classroom where it is taking place:
-    Name: ${emergency_data.name}
-    Location: ${emergency_data.location}
-    Student Count: ${emergency_data.studentCount}
+    Location: ${emergency_data.address}, ${emergency_data.location}
+    Student Count: ${emergency_data.student_Count}
 
     Here is some information about the shooter:
     Age: ${emergency_data.age}
@@ -159,7 +158,7 @@ exports.gather1 = functions.https.onRequest(async(req, res) => {
     const admin_doc_snap = await getAdminDoc(req.body.Digits)
     const school_data = admin_doc_snap.data()
 
-    gather.say("Please ask your question regarding the shooting at " + school_data.name)
+    gather.say("Please ask your question regarding the shooting at " + school_data.location)
 
   } else {
       twiml.redirect('/call');
@@ -203,8 +202,8 @@ async function alertStudentsandPolice(snap) {
   const school_data = admin_doc_snap.data();
   console.log(school_data);
 
-  var textMessage = `This is a ProtectEd alert. A shooting is occuring at: ${school_data.name} located at: ${school_data.location}. Please stay tuned for more information`
-  var callMessage = `This is a ProtectEd alert requesting immediate police support. A shooting is occuring at: ${school_data.name} located at: ${school_data.location}... Organization code: ${school_data.code}. Please call back for additional information.`
+  var textMessage = `This is a ProtectEd alert. A shooting is occuring at: ${school_data.location} located at: ${school_data.address}. Please stay tuned for more information`
+  var callMessage = `This is a ProtectEd alert requesting immediate police support. A shooting is occuring at: ${school_data.location} located at: ${school_data.address}... Organization code: ${school_data.code}. Please call back for additional information.`
 
   await snap.ref.update({
     responses: [callMessage],
@@ -277,10 +276,10 @@ async function alertEMS(snap) {
 
     const admin_doc_snap = await getAdminDoc(code);
     const school_data = admin_doc_snap.data();
-    console.log(school_data);
   
-    var callMessage = `This is a ProtectEd alert requesting immediate EMS support. A student is injured at: ${school_data.name} located at: ${school_data.location}... Organization code: ${school_data.code}. Please call back for additional information.`
-  
+    var callMessage = `This is a ProtectEd alert requesting immediate EMS support. A student is injured at: ${school_data.location} located at: ${school_data.address}... Organization code: ${school_data.code}. Please call back for additional information.`
+    console.log(callMessage);
+
     client.calls
     .create({
        twiml: `<Response><Say>${callMessage}</Say></Response>`,
@@ -290,13 +289,19 @@ async function alertEMS(snap) {
     .then(call => console.log(call.sid));
     }
 
+
 exports.alertOnInjury = functions.firestore 
   .document("emergencies/{victimId}")
   .onUpdate(async(snap, context) => {
-    const victimList1 = await snap.before.data().injuredStudents;
-    const victimList2 = await snap.after.data().injuredStudents;
+    const victimList1 = await snap.before.data()
+    const victimList2 = await snap.after.data()
+    
+    if (victimList1 && victimList2) {
+      console.log(victimList1.injuredStudents);
+      console.log(victimList2.injuredStudents);
 
-    if ((JSON.stringify(victimList1) !== JSON.stringify(victimList2)) && victimList12.length >= victimList1.length) {
-      alertEMS(snap.after)
+      if ((JSON.stringify(victimList1.injuredStudents) !== JSON.stringify(victimList2.injuredStudents)) && victimList2.length >= victimList1.length) {
+        alertEMS(snap.after)
+      }
     }
   })
