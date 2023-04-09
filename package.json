@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "expo-server-sdk": "^3.7.0",
+    "openai": "^3.2.1",
+    "twilio": "^4.10.0"
+  }
+}
