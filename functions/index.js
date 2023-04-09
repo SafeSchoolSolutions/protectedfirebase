@@ -192,19 +192,19 @@ exports.gather2 = functions.https.onRequest(async(req, res) => {
 })
 
 async function dispatchFirstResponders(snap) {
-  var textMessage = `This is a ProtectEd alert. A shooting is occuring at: ${school_data.name} located at: ${school_data.location}. Please stay tuned for more information`
-  var callMessage = `This is a ProtectEd alert. A shooting is occuring at: ${school_data.name} located at: ${school_data.location}... Organization code: ${school_data.code}. Please call back for additional information.`
-
-  await snap.ref.update({
-    responses: [callMessage],
-  })
-
   const client = twilio(accountSid.value(), authToken.value());
   const code = snap.data().code;
   console.log("Code", code)
   const admin_doc_snap = await getAdminDoc(code);
   const school_data = admin_doc_snap.data();
   console.log(school_data);
+
+  var textMessage = `This is a ProtectEd alert. A shooting is occuring at: ${school_data.name} located at: ${school_data.location}. Please stay tuned for more information`
+  var callMessage = `This is a ProtectEd alert. A shooting is occuring at: ${school_data.name} located at: ${school_data.location}... Organization code: ${school_data.code}. Please call back for additional information.`
+
+  await snap.ref.update({
+    responses: [callMessage],
+  })
 
   const usersRef = admin.firestore().collection("users")
   const snapshot = await usersRef.where("code", "==", code).get();
@@ -215,28 +215,29 @@ async function dispatchFirstResponders(snap) {
     snapshot.forEach(async doc => {
       console.log("Found staff document")
       console.log(doc.id, "=>", doc.data())
-      
-      const students = doc.data().students
+      var isAdminMember = doc.data().admin;
 
-      students.forEach(studentNumber => {
-        console.log(studentNumber, "is an admin. Calling.")
+      const classMember = await doc.ref.collection("students").get();
+      classMember.forEach(member => {
+        let number = member.data().number;
 
-        if (doc.data().admin == true) {
+        if (isAdminMember == true) { 
+          console.log(number, "is an admin member. Calling.")
           client.calls
           .create({
              twiml: `<Response><Say>${callMessage}</Say></Response>`,
-             to: studentNumber,
+             to: number,
              from: twilioNumber.value()
            })
           .then(call => console.log(call.sid));
         }
         
-        console.log("Texting", studentNumber)
+        console.log("Texting", number);
         client.messages
         .create({
-          body: message, 
+          body: textMessage, 
           from: twilioNumber.value(), 
-          to: studentNumber
+          to: number
         })
         .then(message => console.log(message.sid));
       })
@@ -250,8 +251,6 @@ async function dispatchFirstResponders(snap) {
          from: twilioNumber.value()
        })
       .then(call => console.log(call.sid));
-
-
 }
 
 
