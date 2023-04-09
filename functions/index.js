@@ -221,10 +221,10 @@ async function alertStudentsandPolice(snap) {
       var isAdminMember = doc.data().admin;
 
       const classMember = await doc.ref.collection("students").get();
-      classMember.forEach(member => {
-        console.log("Found student", member.id)
-        let name = member.data().studentName
-        let number = member.data().studentNumber;
+      classMember.forEach(async member => {
+        console.log("Found student", member.id, member.data())
+        let name = member.data().name
+        let number = member.data().number;
 
         if (isAdminMember == true) { 
           console.log(name, "is an admin member. Calling", number)
