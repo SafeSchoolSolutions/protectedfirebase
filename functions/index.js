@@ -300,7 +300,8 @@ exports.alertOnInjury = functions.firestore
       console.log(victimList1.injuredStudents);
       console.log(victimList2.injuredStudents);
 
-      if ((JSON.stringify(victimList1.injuredStudents) !== JSON.stringify(victimList2.injuredStudents)) && victimList2.length >= victimList1.length) {
+      if ((JSON.stringify(victimList1.injuredStudents) !== JSON.stringify(victimList2.injuredStudents)) && victimList2.injuredStudents.length >= victimList1.injuredStudents.length) {
+        console.log("New student injured, alerting EMS")
         alertEMS(snap.after)
       }
     }
