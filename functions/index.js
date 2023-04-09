@@ -196,13 +196,18 @@ exports.gather2 = functions.https.onRequest(async(req, res) => {
 
 async function alertStudentsandPolice(snap) {
   const client = twilio(accountSid.value(), authToken.value());
+
   const code = snap.data().code;
   console.log("Code", code)
+
+  const doc_snap = await getEmergencyDoc(code)
+  const emergency_data = doc_snap.data()
+
   const admin_doc_snap = await getAdminDoc(code);
   const school_data = admin_doc_snap.data();
   console.log(school_data);
 
-  var textMessage = `This is a ProtectEd alert. A shooting is occuring at: ${school_data.location} located at: ${school_data.address}. Please stay tuned for more information`
+  var textMessage = `This is a ProtectEd alert. A shooting is occuring at ${emergency_data.address} ${emergency_data.location} @ ${school_data.location}. Please stay tuned for more information`
   var callMessage = `This is a ProtectEd alert requesting immediate police support. A shooting is occuring at: ${school_data.location} located at: ${school_data.address}... Organization code: ${school_data.code}. Please call back for additional information.`
 
   await snap.ref.update({
@@ -272,12 +277,16 @@ exports.alertOnIncident = functions.firestore
 
 async function alertEMS(snap) {
     const client = twilio(accountSid.value(), authToken.value());
+    
     const code = snap.data().code;
-
+    
+    const doc_snap = await getEmergencyDoc(code)
+    const emergency_data = doc_snap.data()
+    
     const admin_doc_snap = await getAdminDoc(code);
     const school_data = admin_doc_snap.data();
   
-    var callMessage = `This is a ProtectEd alert requesting immediate EMS support. A student is injured at: ${school_data.location} located at: ${school_data.address}... Organization code: ${school_data.code}. Please call back for additional information.`
+    var callMessage = `This is a ProtectEd alert requesting immediate EMS support. A student is injured near ${emergency_data.address} ${emergency_data.location} at ${school_data.location} ${school_data.address}... Organization code: ${school_data.code}. Please call back for additional information.`
     console.log(callMessage);
 
     client.calls
