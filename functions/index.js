@@ -72,14 +72,14 @@ async function getResponse(code) {
   const openai = new OpenAIApi(configuration);
 
   const messages = [
-    {"role": "system", "content": `Imagine you are a bystander at a high school that you are very knowledgeable about. Here is some information about the school:
+    {"role": "system", "content": `Imagine you are a bystander at a school that you are very knowledgeable about. Here is some information about the school:
     
     Name: ${school_data.name}
-    Location: ${school_data.location}
+    Address: ${school_data.location}
     Student Count: ${school_data.studentCount}
     Additional Information: ${school_data.additionalInformation}
     
-    Imagine you witness a shooting taking place and a 911 operator calls and asks you questions. 
+    Imagine you witness a shooting taking place and you call 911 to report the emergency.
     
     Here is some information about the classroom where it is taking place:
     Name: ${emergency_data.name}
@@ -91,8 +91,11 @@ async function getResponse(code) {
     Sex: ${emergency_data.sex}
     Height: ${emergency_data.height}
     Race: ${emergency_data.race}
-    
-    Answer the questions as concisely as possible and if you do not know the answer say "I Don't Know".`},
+    Weight: ${emergency_data.weight}
+
+    The following students are injured: ${emergency_data.injuredStudents}
+
+    Answer the dispatcher's following questions as concisely as possible and if you do not have enough information to answer the question say "I Don't Know". `},
   ];
   
   let i = 1;
@@ -113,6 +116,7 @@ async function getResponse(code) {
   const completion = await openai.createChatCompletion({
     model:"gpt-3.5-turbo",
     messages: messages,
+    temperature: 0,
   })
 
   const response = completion.data.choices[0]['message']['content']
@@ -191,7 +195,7 @@ exports.gather2 = functions.https.onRequest(async(req, res) => {
 
 })
 
-async function dispatchFirstResponders(snap) {
+async function alertStudentsandPolice(snap) {
   const client = twilio(accountSid.value(), authToken.value());
   const code = snap.data().code;
   console.log("Code", code)
@@ -200,7 +204,7 @@ async function dispatchFirstResponders(snap) {
   console.log(school_data);
 
   var textMessage = `This is a ProtectEd alert. A shooting is occuring at: ${school_data.name} located at: ${school_data.location}. Please stay tuned for more information`
-  var callMessage = `This is a ProtectEd alert. A shooting is occuring at: ${school_data.name} located at: ${school_data.location}... Organization code: ${school_data.code}. Please call back for additional information.`
+  var callMessage = `This is a ProtectEd alert requesting immediate police support. A shooting is occuring at: ${school_data.name} located at: ${school_data.location}... Organization code: ${school_data.code}. Please call back for additional information.`
 
   await snap.ref.update({
     responses: [callMessage],
@@ -214,15 +218,17 @@ async function dispatchFirstResponders(snap) {
   } else {
     snapshot.forEach(async doc => {
       console.log("Found staff document")
-      console.log(doc.id, "=>", doc.data())
+      console.log(doc.id)
       var isAdminMember = doc.data().admin;
 
       const classMember = await doc.ref.collection("students").get();
       classMember.forEach(member => {
-        let number = member.data().number;
+        console.log("Found student", member.id)
+        let name = member.data().studentName
+        let number = member.data().studentNumber;
 
         if (isAdminMember == true) { 
-          console.log(number, "is an admin member. Calling.")
+          console.log(name, "is an admin member. Calling", number)
           client.calls
           .create({
              twiml: `<Response><Say>${callMessage}</Say></Response>`,
@@ -254,13 +260,43 @@ async function dispatchFirstResponders(snap) {
 }
 
 
-exports.alertResponders = functions.firestore
+exports.alertOnIncident = functions.firestore
   .document("emergencies/{victimId}")
   .onCreate(async(snap, context) => {
     console.log("Document updated")
     const victim_data = snap.data();
-    console.log("REPORTER DATA" + JSON.stringify(victim_data))
+    console.log("Reporter Data" + JSON.stringify(victim_data))
     console.log("Dispatching...")
-    await dispatchFirstResponders(snap)
+    await alertStudentsandPolice(snap)
   })
 
+
+async function alertEMS(snap) {
+    const client = twilio(accountSid.value(), authToken.value());
+    const code = snap.data().code;
+
+    const admin_doc_snap = await getAdminDoc(code);
+    const school_data = admin_doc_snap.data();
+    console.log(school_data);
+  
+    var callMessage = `This is a ProtectEd alert requesting immediate EMS support. A student is injured at: ${school_data.name} located at: ${school_data.location}... Organization code: ${school_data.code}. Please call back for additional information.`
+  
+    client.calls
+    .create({
+       twiml: `<Response><Say>${callMessage}</Say></Response>`,
+       to: dispatcherNumber.value(),
+       from: twilioNumber.value()
+     })
+    .then(call => console.log(call.sid));
+    }
+
+exports.alertOnInjury = functions.firestore 
+  .document("emergencies/{victimId}")
+  .onUpdate(async(snap, context) => {
+    const victimList1 = await snap.before.data().injuredStudents;
+    const victimList2 = await snap.after.data().injuredStudents;
+
+    if ((JSON.stringify(victimList1) !== JSON.stringify(victimList2)) && victimList12.length >= victimList1.length) {
+      alertEMS(snap.after)
+    }
+  })
